@@ -32,6 +32,13 @@ app.get("/v1/businesses/:id", async (req, reply) => { const { id } = z.object({ 
 app.post("/v1/businesses/:id/reanalyze", async (req, reply) => { const { id } = z.object({ id: z.string().uuid() }).parse(req.params); const jobId = await enqueue("REANALYZE", { businessId: id }, 20); return reply.code(202).send({ jobId }); });
 app.patch("/v1/businesses/:id/status", async (req, reply) => { const { id } = z.object({ id: z.string().uuid() }).parse(req.params); const body = z.object({ status: z.enum(["REVIEW","APPROVED","REJECTED","DO_NOT_CONTACT"]), reason: z.string().max(500).optional() }).parse(req.body); const result = await db.query("UPDATE discovered_businesses SET status=$2::business_status,rejection_reason=$3,updated_at=now() WHERE id=$1 RETURNING id,status", [id,body.status,body.reason]); return result.rowCount ? result.rows[0] : reply.code(404).send({ error: "not_found" }); });
 app.get("/v1/stats", async () => { const result = await db.query("SELECT count(*)::int total,count(*) FILTER (WHERE status='REVIEW')::int review,count(*) FILTER (WHERE status='APPROVED')::int approved,count(*) FILTER (WHERE status='REJECTED')::int rejected FROM discovered_businesses"); return result.rows[0]; });
+app.get("/v1/search-options", async () => {
+  const [zones,categories]=await Promise.all([
+    db.query("SELECT id,name,country_code,radius_km FROM search_zones WHERE active ORDER BY name"),
+    db.query("SELECT id,slug,label,query_terms,lead_value_score FROM search_categories WHERE active ORDER BY lead_value_score DESC,label")
+  ]);
+  return {zones:zones.rows,categories:categories.rows};
+});
 app.get("/v1/jobs/:id", async (req, reply) => {
   const { id }=z.object({id:z.string().uuid()}).parse(req.params);
   const result=await db.query(`SELECT j.id,j.type,j.status,j.attempts,j.max_attempts,j.last_error,j.payload,j.created_at,j.started_at,j.completed_at,
