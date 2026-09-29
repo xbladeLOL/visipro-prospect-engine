@@ -6,12 +6,12 @@ import { scoreBusiness } from "../scoring/scorer.js";
 import { enqueue, type Job } from "./queue.js";
 
 export async function handleJob(job: Job): Promise<void> {
-  if (job.type === "DISCOVER") return discover(job.payload);
+  if (job.type === "DISCOVER") return discover(job.id, job.payload);
   if (job.type === "ANALYZE_SITE" || job.type === "REANALYZE") return analyze(String(job.payload.businessId));
   throw new Error(`Unsupported job type: ${job.type}`);
 }
 
-async function discover(payload: Record<string, unknown>) {
+async function discover(parentJobId: string, payload: Record<string, unknown>) {
   const query = String(payload.query ?? ""); const city = String(payload.city ?? "");
   if (!query || !city) throw new Error("Discovery job requires query and city");
   const provider = createProvider();
@@ -21,7 +21,7 @@ async function discover(payload: Record<string, unknown>) {
     let newCount = 0;
     for (const input of found) {
       const { business, created } = await upsertBusiness(input); if (created) newCount++;
-      if (business.status !== "DO_NOT_CONTACT") await enqueue("ANALYZE_SITE", { businessId: business.id }, 5);
+      if (business.status !== "DO_NOT_CONTACT") await enqueue("ANALYZE_SITE", { businessId: business.id, parentJobId }, 5);
     }
     await db.query("UPDATE discovery_runs SET status='COMPLETED',found_count=$2,new_count=$3,completed_at=now() WHERE id=$1", [run.rows[0].id, found.length, newCount]);
   } catch (error) {

@@ -93,6 +93,16 @@ step "Démarrage de PostgreSQL et application des migrations"
 docker compose up -d postgres
 until docker compose exec -T postgres pg_isready -U visipro_prospects -d visipro_prospects >/dev/null 2>&1; do printf '.'; sleep 2; done
 echo
+# POSTGRES_PASSWORD n'est appliqué par l'image officielle qu'à la création du
+# volume. Sur une réinstallation, synchroniser le rôle existant avec le nouveau
+# secret généré évite une erreur d'authentification sans supprimer les données.
+db_password_current=$(sed -n 's/^POSTGRES_PASSWORD=//p' .env)
+if [[ ! "$db_password_current" =~ ^[A-Za-z0-9_-]{16,128}$ ]]; then
+  echo "Mot de passe PostgreSQL invalide dans .env."
+  exit 1
+fi
+docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U visipro_prospects -d postgres -c "ALTER ROLE visipro_prospects WITH PASSWORD '${db_password_current}';" >/dev/null
+ok "Mot de passe PostgreSQL synchronisé"
 docker compose run --rm migrate
 docker compose run --rm api node dist/cli/seed.js
 ok "Base de données initialisée"
