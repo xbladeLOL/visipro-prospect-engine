@@ -1,0 +1,85 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: visipro_prospects
+      POSTGRES_USER: visipro_prospects
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD in .env}
+    volumes:
+      - prospect_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U visipro_prospects -d visipro_prospects"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  migrate:
+    build: .
+    command: ["node", "dist/cli/migrate.js"]
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "${PORT:-8080}:${PORT:-8080}"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    init: true
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: ["/tmp:size=256m,noexec,nosuid"]
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+
+  worker:
+    build: .
+    command: ["node", "dist/worker.js"]
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    init: true
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: ["/tmp:size=512m,noexec,nosuid"]
+    deploy:
+      resources:
+        limits:
+          cpus: "3.0"
+          memory: 5G
+
+  scheduler:
+    build: .
+    command: ["node", "dist/scheduler.js"]
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    init: true
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+
+volumes:
+  prospect_db:
