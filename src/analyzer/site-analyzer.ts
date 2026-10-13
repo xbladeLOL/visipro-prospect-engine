@@ -6,6 +6,23 @@ import type { WebsiteAnalysis } from "../domain.js";
 
 const QUOTE_WORDS = /\b(devis|estimation|tarif|contactez|rappel)\b/i;
 const SOCIAL = /facebook\.com|instagram\.com|linkedin\.com|youtube\.com|tiktok\.com/i;
+const EMAIL_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+const CONTACT_PAGE = /contact|nous-contacter|coordonnees|mentions-legales|legal/i;
+
+function extractEmails(html: string): string[] {
+  const $ = cheerio.load(html);
+  const candidates = new Set<string>();
+  $('a[href^="mailto:"]').each((_index, element) => {
+    const value = ($(element).attr("href") ?? "").slice(7).split("?")[0]?.trim().toLowerCase();
+    if (value) candidates.add(value);
+  });
+  for (const match of html.match(EMAIL_PATTERN) ?? []) candidates.add(match.toLowerCase());
+  return [...candidates].filter((email) =>
+    email.length <= 254 &&
+    !/example\.(com|org|net)$|sentry\.io$|wixpress\.com$/i.test(email) &&
+    !/\.(png|jpe?g|gif|webp|svg)$/i.test(email)
+  );
+}
 
 function detectTechnologies(headers: Headers, html: string): string[] {
   const out = new Set<string>();
@@ -46,6 +63,13 @@ export async function analyzeSite(rawUrl: string): Promise<WebsiteAnalysis> {
     const contentType = response.headers.get("content-type") ?? "";
     if (!contentType.includes("text/html")) throw new Error(`Unsupported content type: ${contentType}`);
     const $ = cheerio.load(body);
+    const contactUrls = $("a[href]").toArray().map((element) => $(element).attr("href") ?? "").filter((href) => CONTACT_PAGE.test(href)).map((href) => {
+      try { const url = new URL(href, response.url); return url.hostname === finalUrl.hostname ? url.toString() : undefined; } catch { return undefined; }
+    }).filter((url): url is string => Boolean(url)).filter((url, index, values) => values.indexOf(url) === index).slice(0, 2);
+    const extraPages = await Promise.all(contactUrls.map(async (url) => {
+      try { const page = await fetchLimited(url); return page.response.ok ? page.body : ""; } catch { return ""; }
+    }));
+    const emails = [...new Set([body, ...extraPages].flatMap(extractEmails))];
     $("script,style,noscript,svg").remove();
     const title = $("title").first().text().trim();
     const metaDescription = $('meta[name="description"]').attr("content")?.trim();
@@ -55,7 +79,7 @@ export async function analyzeSite(rawUrl: string): Promise<WebsiteAnalysis> {
     const hasCanonical = $('link[rel="canonical"]').length > 0;
     const hasSchemaOrg = $('script[type="application/ld+json"]').length > 0 || /schema\.org/i.test(body);
     const hasPhoneLink = $('a[href^="tel:"]').length > 0;
-    const hasEmailLink = $('a[href^="mailto:"]').length > 0;
+    const hasEmailLink = emails.length > 0;
     const hasContactForm = $("form").length > 0 && $("form input, form textarea").length > 0;
     const hasQuoteCta = $("a,button").toArray().some((el) => QUOTE_WORDS.test($(el).text()));
     const hasSocialLinks = $("a[href]").toArray().some((el) => SOCIAL.test($(el).attr("href") ?? ""));
@@ -70,8 +94,8 @@ export async function analyzeSite(rawUrl: string): Promise<WebsiteAnalysis> {
     if (!hasQuoteCta) issues.push("CTA de devis peu visible ou absent");
     if (copyrightYear && copyrightYear < new Date().getFullYear() - 2) issues.push(`Copyright ancien (${copyrightYear})`);
     const [hasRobots, hasSitemap] = await Promise.all([exists(finalUrl, "/robots.txt"), exists(finalUrl, "/sitemap.xml")]);
-    return { finalUrl: response.url, httpStatus: response.status, reachable: response.ok, responseMs: Date.now() - started, tls: finalUrl.protocol === "https:", title: title || undefined, metaDescription, lang: $("html").attr("lang"), h1Count, hasViewport, hasCanonical, hasSchemaOrg, hasPhoneLink, hasEmailLink, hasContactForm, hasQuoteCta, hasSocialLinks, hasRobots, hasSitemap, copyrightYear, wordCount: visibleText.split(/\s+/).filter(Boolean).length, internalPagesChecked: 1, brokenLinks: 0, technologies: detectTechnologies(response.headers, body), issues, facts: { contentBytes: Buffer.byteLength(body), contentType } };
+    return { finalUrl: response.url, httpStatus: response.status, reachable: response.ok, responseMs: Date.now() - started, tls: finalUrl.protocol === "https:", title: title || undefined, metaDescription, lang: $("html").attr("lang"), h1Count, hasViewport, hasCanonical, hasSchemaOrg, hasPhoneLink, hasEmailLink, email: emails[0], emails, hasContactForm, hasQuoteCta, hasSocialLinks, hasRobots, hasSitemap, copyrightYear, wordCount: visibleText.split(/\s+/).filter(Boolean).length, internalPagesChecked: 1 + extraPages.filter(Boolean).length, brokenLinks: 0, technologies: detectTechnologies(response.headers, body), issues, facts: { contentBytes: Buffer.byteLength(body), contentType, emails } };
   } catch (error) {
-    return { reachable: false, responseMs: Date.now() - started, tls: rawUrl.startsWith("https:"), h1Count: 0, hasViewport: false, hasCanonical: false, hasSchemaOrg: false, hasPhoneLink: false, hasEmailLink: false, hasContactForm: false, hasQuoteCta: false, hasSocialLinks: false, hasRobots: false, hasSitemap: false, wordCount: 0, internalPagesChecked: 0, brokenLinks: 0, technologies: [], issues: [`Site inaccessible: ${error instanceof Error ? error.message : String(error)}`], facts: {} };
+    return { reachable: false, responseMs: Date.now() - started, tls: rawUrl.startsWith("https:"), h1Count: 0, hasViewport: false, hasCanonical: false, hasSchemaOrg: false, hasPhoneLink: false, hasEmailLink: false, emails: [], hasContactForm: false, hasQuoteCta: false, hasSocialLinks: false, hasRobots: false, hasSitemap: false, wordCount: 0, internalPagesChecked: 0, brokenLinks: 0, technologies: [], issues: [`Site inaccessible: ${error instanceof Error ? error.message : String(error)}`], facts: {} };
   }
 }

@@ -29,6 +29,8 @@ const schema = z.object({
   ,SCHEDULER_ENABLED: bool.default(true)
   ,DISCOVERY_SCHEDULE_HOUR_UTC: z.coerce.number().int().min(0).max(23).default(2)
   ,DISCOVERY_RESULTS_PER_QUERY: z.coerce.number().int().min(1).max(100).default(30)
+  ,DISCOVERY_REQUIRE_EMAIL: bool.default(true)
+  ,DISCOVERY_MAX_QUERIES_PER_RUN: z.coerce.number().int().min(1).max(100).default(6)
 });
 
 export type Config = z.infer<typeof schema>;

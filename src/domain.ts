@@ -41,6 +41,8 @@ export interface WebsiteAnalysis {
   hasSchemaOrg: boolean;
   hasPhoneLink: boolean;
   hasEmailLink: boolean;
+  email?: string;
+  emails?: string[];
   hasContactForm: boolean;
   hasQuoteCta: boolean;
   hasSocialLinks: boolean;

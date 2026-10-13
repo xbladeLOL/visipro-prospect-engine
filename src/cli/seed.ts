@@ -6,7 +6,17 @@ const categories = [
   ["plombier","Plombiers",["plombier","dépannage plomberie"],9],
   ["couvreur","Couvreurs",["couvreur","entreprise de couverture"],9],
   ["chauffagiste","Chauffagistes / climatisation",["chauffagiste","climatisation"],9],
-  ["menuisier","Menuisiers",["menuisier","menuiserie"],8]
+  ["menuisier","Menuisiers",["menuisier","menuiserie"],8],
+  ["paysagiste","Paysagistes",["paysagiste","aménagement paysager"],10],
+  ["pisciniste","Piscinistes",["pisciniste","construction piscine"],10],
+  ["architecte","Architectes",["architecte","cabinet d'architecture"],10],
+  ["constructeur-maison","Constructeurs de maisons",["constructeur maison individuelle"],10],
+  ["cuisiniste","Cuisinistes",["cuisiniste","cuisine sur mesure"],9],
+  ["renovation-interieure","Rénovation intérieure",["entreprise rénovation intérieure"],9],
+  ["decorateur-interieur","Décorateurs d'intérieur",["décorateur intérieur","architecte d'intérieur"],9],
+  ["agence-immobiliere","Agences immobilières",["agence immobilière"],9],
+  ["salle-reception","Salles de réception",["salle de réception","domaine mariage"],9],
+  ["photographe","Photographes professionnels",["photographe professionnel"],8]
 ];
-for (const [slug,label,terms,value] of categories) await db.query("INSERT INTO search_categories(slug,label,query_terms,lead_value_score) VALUES($1,$2,$3,$4) ON CONFLICT(slug) DO UPDATE SET label=excluded.label,query_terms=excluded.query_terms", [slug,label,terms,value]);
+for (const [slug,label,terms,value] of categories) await db.query("INSERT INTO search_categories(slug,label,query_terms,lead_value_score) VALUES($1,$2,$3,$4) ON CONFLICT(slug) DO UPDATE SET label=excluded.label,query_terms=excluded.query_terms,lead_value_score=excluded.lead_value_score,active=true", [slug,label,terms,value]);
 console.log(`Seeded ${zones.length} zones and ${categories.length} categories`); await db.end();

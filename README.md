@@ -28,7 +28,7 @@ Une fois installé, lancez une recherche interactive avec :
 sudo bash recherche.sh
 ```
 
-Le script affiche en direct la découverte, les analyses en attente ou en cours, puis un tableau récapitulatif avec score, niveau et offres recommandées.
+Le script accepte un secteur, plusieurs secteurs séparés par des virgules, ou `tous`. Il peut limiter les résultats aux entreprises possédant une adresse email publique, affiche en direct la découverte et les analyses, puis un tableau récapitulatif avec email, score, niveau et offres recommandées.
 
 Installation manuelle alternative :
 
@@ -44,18 +44,18 @@ Lancer une découverte :
 ```bash
 curl -X POST http://localhost:8080/v1/discovery-runs \
   -H "x-api-key: VOTRE_CLE" -H "content-type: application/json" \
-  -d '{"query":"électricien","city":"Orléans","limit":30}'
+  -d '{"queries":["électricien","paysagiste"],"city":"Orléans","limit":30,"requireEmail":true}'
 ```
 
 Consulter les candidats :
 
 ```bash
-curl 'http://localhost:8080/v1/businesses?minScore=70' -H "x-api-key: VOTRE_CLE"
+curl 'http://localhost:8080/v1/businesses?minScore=70&hasEmail=true' -H "x-api-key: VOTRE_CLE"
 ```
 
 Le fournisseur `mock` est activé par défaut pour tester sans coût. Pour la production, définir `DISCOVERY_PROVIDER=dataforseo` et ses identifiants. SerpApi est également supporté.
 
-Après le seed, le planificateur lance chaque jour les recherches configurées à `DISCOVERY_SCHEDULE_HOUR_UTC`. Un lancement immédiat complet est possible avec `POST /v1/discovery-runs/plan`.
+Après le seed, le planificateur lance chaque jour les recherches configurées à `DISCOVERY_SCHEDULE_HOUR_UTC`. Pour respecter le quota gratuit SerpApi, il traite par défaut six couples secteur/ville par jour, en commençant par ceux jamais recherchés ou les plus anciens, et ne propose que les entreprises avec email. Les réglages `DISCOVERY_MAX_QUERIES_PER_RUN` et `DISCOVERY_REQUIRE_EMAIL` permettent d’adapter ce comportement. Un lancement immédiat du prochain lot est possible avec `POST /v1/discovery-runs/plan`.
 
 ## Sécurité et conformité
 

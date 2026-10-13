@@ -1,6 +1,6 @@
 import type { Business, ScoreResult, WebsiteAnalysis } from "../domain.js";
 
-const HIGH_VALUE = /electric|plomb|couvr|chauff|clim|menuis|toitur|renov/i;
+const HIGH_VALUE = /electric|plomb|couvr|chauff|clim|menuis|toitur|renov|paysag|piscin|architect|cuisin|construct|immobili|decorat|réception|reception|photograph/i;
 const clamp = (n: number, max: number) => Math.max(0, Math.min(max, Math.round(n)));
 
 export function scoreBusiness(business: Business, web?: WebsiteAnalysis): ScoreResult {
@@ -37,7 +37,8 @@ export function scoreBusiness(business: Business, web?: WebsiteAnalysis): ScoreR
 
   let fitScore = HIGH_VALUE.test(business.category ?? "") ? 15 : 9;
   if (webOpportunity >= 20) fitScore += 3;
-  if (business.phone || business.email) fitScore += 2;
+  if (business.email) { fitScore += 3; reasons.push("Adresse email publique disponible"); }
+  else if (business.phone) fitScore += 1;
   fitScore = clamp(fitScore, 20);
 
   const total = clamp(businessScore + webOpportunity + localScore + fitScore, 100);

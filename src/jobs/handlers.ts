@@ -7,7 +7,7 @@ import { enqueue, type Job } from "./queue.js";
 
 export async function handleJob(job: Job): Promise<void> {
   if (job.type === "DISCOVER") return discover(job.id, job.payload);
-  if (job.type === "ANALYZE_SITE" || job.type === "REANALYZE") return analyze(String(job.payload.businessId));
+  if (job.type === "ANALYZE_SITE" || job.type === "REANALYZE") return analyze(String(job.payload.businessId), Boolean(job.payload.requireEmail));
   throw new Error(`Unsupported job type: ${job.type}`);
 }
 
@@ -21,7 +21,7 @@ async function discover(parentJobId: string, payload: Record<string, unknown>) {
     let newCount = 0;
     for (const input of found) {
       const { business, created } = await upsertBusiness(input); if (created) newCount++;
-      if (business.status !== "DO_NOT_CONTACT") await enqueue("ANALYZE_SITE", { businessId: business.id, parentJobId }, 5);
+      if (business.status !== "DO_NOT_CONTACT") await enqueue("ANALYZE_SITE", { businessId: business.id, parentJobId, requireEmail: Boolean(payload.requireEmail) }, 5);
     }
     await db.query("UPDATE discovery_runs SET status='COMPLETED',found_count=$2,new_count=$3,completed_at=now() WHERE id=$1", [run.rows[0].id, found.length, newCount]);
   } catch (error) {
@@ -29,10 +29,11 @@ async function discover(parentJobId: string, payload: Record<string, unknown>) {
   }
 }
 
-async function analyze(id: string) {
+async function analyze(id: string, requireEmail = false) {
   const business = await getBusiness(id); if (!business) throw new Error(`Business ${id} not found`);
   await db.query("UPDATE discovered_businesses SET status='ANALYZING',updated_at=now() WHERE id=$1", [id]);
   const analysis = business.websiteUrl ? await analyzeSite(business.websiteUrl) : undefined;
   if (analysis) await saveAnalysis(id, analysis);
-  await saveScore(id, scoreBusiness(business, analysis));
+  const enrichedBusiness = await getBusiness(id) ?? business;
+  await saveScore(id, scoreBusiness(enrichedBusiness, analysis), requireEmail && !enrichedBusiness.email ? "ANALYZED" : "REVIEW");
 }

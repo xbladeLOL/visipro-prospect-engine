@@ -20,12 +20,14 @@ app.get("/health", async () => ({ status: "ok", service: "visipro-prospect-engin
 app.get("/ready", async (_req, reply) => { try { await db.query("SELECT 1"); return { status: "ready" }; } catch { return reply.code(503).send({ status: "not_ready" }); } });
 
 app.post("/v1/discovery-runs", async (req, reply) => {
-  const body = z.object({ query: z.string().min(2).max(100), city: z.string().min(2).max(100), countryCode: z.string().length(2).default("FR"), limit: z.number().int().min(1).max(100).default(50) }).parse(req.body);
-  const jobId = await enqueue("DISCOVER", body, 10); return reply.code(202).send({ jobId, status: "PENDING" });
+  const body = z.object({ query: z.string().min(2).max(100).optional(), queries: z.array(z.string().min(2).max(100)).min(1).max(30).optional(), city: z.string().min(2).max(100), countryCode: z.string().length(2).default("FR"), limit: z.number().int().min(1).max(100).default(50), requireEmail: z.boolean().default(false) }).refine((value) => Boolean(value.query || value.queries?.length), { message: "query_or_queries_required" }).parse(req.body);
+  const queries = [...new Set(body.queries?.length ? body.queries : [body.query!])];
+  const jobIds = await Promise.all(queries.map((query) => enqueue("DISCOVER", { query, city: body.city, countryCode: body.countryCode, limit: body.limit, requireEmail: body.requireEmail }, 10)));
+  return reply.code(202).send({ jobId: jobIds[0], jobIds, queued: jobIds.length, status: "PENDING" });
 });
 app.post("/v1/discovery-runs/plan", async (_req, reply) => reply.code(202).send({ queued: await enqueueDiscoveryPlan() }));
 app.get("/v1/businesses", async (req) => {
-  const q = z.object({ status: z.string().optional(), minScore: z.coerce.number().int().min(0).max(100).optional(), city: z.string().optional(), limit: z.coerce.number().int().min(1).max(100).default(50), offset: z.coerce.number().int().min(0).default(0) }).parse(req.query);
+  const q = z.object({ status: z.string().optional(), minScore: z.coerce.number().int().min(0).max(100).optional(), city: z.string().optional(), hasEmail: z.enum(["true","false"]).transform((value) => value === "true").optional(), limit: z.coerce.number().int().min(1).max(100).default(50), offset: z.coerce.number().int().min(0).default(0) }).parse(req.query);
   return { items: await listBusinesses(q), limit: q.limit, offset: q.offset };
 });
 app.get("/v1/businesses/:id", async (req, reply) => { const { id } = z.object({ id: z.string().uuid() }).parse(req.params); const item = await getBusiness(id); return item ?? reply.code(404).send({ error: "not_found" }); });
